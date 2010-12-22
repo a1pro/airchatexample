@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2010 Marc Carmen (http://day2daydevelopment.com)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+This project also includes the as3corelib (http://code.google.com/p/as3corelib/)
+-->
+
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009" 
+					   xmlns:s="library://ns.adobe.com/flex/spark" 
+					   xmlns:mx="library://ns.adobe.com/flex/mx" 
+					   defaultButton="{cmdSend}"
+					   creationComplete="windowedapplication1_creationCompleteHandler(event)">
+	<fx:Script>
+		<![CDATA[			
+			import com.adobe.serialization.json.JSON;
+			import com.day2daydevelopment.examples.chat.popup.GetUsername;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.FlexEvent;
+			import mx.formatters.DateFormatter;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.rpc.remoting.Operation;
+			
+			[Bindable]
+			private var serverUrl:String = "http://10.1.1.242/chat/service.php";
+			
+			[Bindable]
+			private var username:String = "";
+			
+			[Bindable]
+			private var format:String = "xml";
+			
+			[Bindable]
+			private var chatMessages:ArrayCollection = new ArrayCollection();
+			
+			private var OP_PING:String = "ping";
+			private var OP_CREATE:String = "createChatMessage";
+			private var OP_GET_CHATS:String = "getChatMessagesAfterTimestamp";
+			
+			private var lastUpdated:Number = 0;
+			
+			private var pollTimer:Timer;
+			
+			private var dateFormatter:DateFormatter = new DateFormatter();
+		
+			protected function windowedapplication1_creationCompleteHandler(event:FlexEvent):void
+			{
+				dateFormatter.formatString = "MM/DD/YY L:NN A";
+				
+				this.maximize();
+				
+				showGetUsername();
+			}
+			
+			private function showGetUsername():void {
+				var window:GetUsername = 
+					GetUsername(PopUpManager.createPopUp(this.main, GetUsername, true));
+				window.callback = getUsernameCallback;
+				PopUpManager.centerPopUp(window);
+			}
+			
+			private function getUsernameCallback(username:String):void {
+				if (username != null && username.length > 0) {
+					this.username = username;
+					updateTimestamp();
+					getChatMessages(lastUpdated);
+				}
+				else {
+					showGetUsername();
+				}
+			}
+			
+			private function sendPing(pingText:String = ""):void {
+				service.send({method: OP_PING, format: format, pingText: pingText});
+			}
+			
+			private function createChatMessage(message:String):void {
+				service.send({method: OP_CREATE, format: format, username: username, message: message});
+			}
+			
+			private function getChatMessages(timestamp:Number = 0):void {
+				service.send({method: OP_GET_CHATS, format: format, timestamp: timestamp});
+			}
+			
+			protected function service_faultHandler(event:FaultEvent):void
+			{
+				Alert.show("Error: " + event.fault.faultString, "Fault");
+			}
+
+			protected function service_resultHandler(event:ResultEvent):void
+			{
+				var result:Object;
+				
+				if (format == "json") {
+					result = JSON.decode(event.result.toString());
+				}
+				else {
+					result = event.result.webServiceResult;
+				}
+
+				if (result == null) {
+					
+				}
+				else {
+					var operation:String = result.operation;
+					var code:int = result.code;
+					
+					if (code >= 0) {
+						switch (operation) {
+							case (OP_PING):
+								Alert.show("Ping Successful", "Success");
+								break;
+							case (OP_CREATE):
+								getChatMessages(lastUpdated);
+								break;
+							case (OP_GET_CHATS):
+								if (result.message != null) {
+									if (result.message.ChatMessage is ArrayCollection) {
+										
+										for each (var tempObj:Object in result.message.ChatMessage) {
+											addChatMessageToList(tempObj);
+										}
+									}
+									else {
+										addChatMessageToList(result.message.ChatMessage);
+									}
+								}
+								updateTimestamp();
+								startTimer();
+								break;
+							default:
+								Alert.show(operation + " does not have a match", "No Operation Match");
+						}
+					}
+					else {
+						switch (operation) {
+							default:
+								Alert.show("Error with " + operation + "\n\n" + result.message, operation  + " Failed");
+						}
+					}
+				}
+			}
+
+			protected function cmdSend_clickHandler(event:MouseEvent):void
+			{
+				if (username == null || username.length == 0) {
+					Alert.show("No username specified", "Username Required");
+				}
+				else if (chatMessage.text == null || chatMessage.text.length == 0) {
+					Alert.show("No message has been included", "No Message");
+				}
+				else {
+					createChatMessage(chatMessage.text);
+					chatMessage.text = "";
+				}
+			}
+			
+			private function updateTimestamp():void {
+				lastUpdated = Math.floor(((new Date()).time / 1000));
+			}
+			
+			private function startTimer(length:Number = 5000):void {
+				pollTimer = new Timer(length, 1);
+				pollTimer.addEventListener(TimerEvent.TIMER_COMPLETE, timerTick);
+				pollTimer.start();
+			}
+
+			private function timerTick(event:TimerEvent):void {
+				getChatMessages(lastUpdated);
+				updateTimestamp();
+			}
+			
+			private function addChatMessageToList(item:Object):void {
+				if (item != null) {
+					var found:Boolean = false;
+					for each (var tempObj:Object in chatMessages) {
+						if (tempObj.id == item.id){
+							found = true;
+							break;
+						}
+					}
+					
+					if (!found) {
+						chatMessages.addItem(item);
+					}
+				}
+			}
+			
+			private function formatDate(item:Object, column:GridColumn):String {
+				if (item != null && item.received != null) {
+					return dateFormatter.format(new Date(Number(item.received) * 1000));
+				}
+				return "";
+			}
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<s:HTTPService id="service"
+					   url="{serverUrl}"
+					   useProxy="false"
+					   method="POST"
+					   fault="service_faultHandler(event)"
+					   result="service_resultHandler(event)"/>
+	</fx:Declarations>
+	
+	<s:VGroup width="100%" height="100%"
+			  paddingBottom="4" paddingLeft="4" paddingRight="4" paddingTop="4"
+			  id="main">
+		<s:DataGrid id="dgChatHistory" width="100%" height="100%"
+					dataProvider="{chatMessages}">
+			<s:columns>
+				<s:ArrayList>
+					<s:GridColumn headerText="Date" sortable="false" labelFunction="formatDate" width="150"/>
+					<s:GridColumn headerText="Name" sortable="false" dataField="username" width="150"/>
+					<s:GridColumn headerText="IP Address" sortable="false" dataField="ipaddress" width="150"/>
+					<s:GridColumn headerText="Message" sortable="false" dataField="message"/>
+				</s:ArrayList>
+			</s:columns>
+		</s:DataGrid>
+		<s:HGroup width="100%">
+			<s:Label text="Type Your Message:"/>
+			<s:TextInput id="chatMessage" text="" width="100%"/>
+			<s:Button id="cmdSend" label="Send" click="cmdSend_clickHandler(event)"/>
+		</s:HGroup>
+	</s:VGroup>
+</s:WindowedApplication>
