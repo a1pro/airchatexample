@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2010 Marc Carmen (http://day2daydevelopment.com)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<s:TitleWindow xmlns:fx="http://ns.adobe.com/mxml/2009"
+			   xmlns:s="library://ns.adobe.com/flex/spark"
+			   xmlns:mx="library://ns.adobe.com/flex/mx"
+			   width="302" height="154" title="Please enter your username:"
+			   close="titlewindow1_closeHandler(event)">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			[Bindable]
+			private var _callback:Function = null;
+			public function set callback(temp:Function):void {
+				this._callback = temp;
+			}
+			public function get callback():Function {
+				return this._callback;
+			}
+
+			protected function button1_clickHandler(event:MouseEvent):void
+			{
+				if (username.text != null && username.text.length > 0) {
+					closeWindow();
+				}
+			}
+
+			private function closeWindow():void {
+				if (this._callback != null) {
+					this._callback(username.text);
+					PopUpManager.removePopUp(this);
+				}
+			}
+
+			protected function titlewindow1_closeHandler(event:CloseEvent):void
+			{
+				event.preventDefault();
+			}
+
+		]]>
+	</fx:Script>
+	<s:VGroup width="100%" height="100%">
+		<s:Form width="100%" height="100%" defaultButton="{button1}">
+			<s:FormItem label="Username" width="100%">
+				<s:TextInput id="username" width="100%"/>
+			</s:FormItem>
+		</s:Form>
+		<mx:ControlBar width="100%" horizontalAlign="right">
+			<s:Button id="button1" label="OK" click="button1_clickHandler(event)"/>
+		</mx:ControlBar>
+	</s:VGroup>
+</s:TitleWindow>
